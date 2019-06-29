@@ -13,6 +13,7 @@ class Player:
 		self.last = player["last_name"]
 		self.cost = float(player["cost"])/1000000
 		self.position = player["positions"][0]
+		self.gp = player["stats"]["games_played"]
 		self.tp = player["stats"]["total_points"]
 		self.gp = player["stats"]["games_played"]
 		self.sr = player["stats"]["season_rank"]
