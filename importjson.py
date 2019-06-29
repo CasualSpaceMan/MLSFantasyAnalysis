@@ -1,18 +1,36 @@
 import requests
 import json
-import pandas
+import matplotlib.pyplot as plt
+import pylab
+import numpy
 
 #create player class
 class Player:
-	def __init__(self,id_,squadid,teams,first, last, cost):
-		self.id = id_
-		self.squadid = squadid
+	def __init__(self,player):
 		self.team = []
-		self.first = first
-		self.last = last
-		self.name = " ".join([self.first,self.last])
-		self.cost = cost
 		self.matchhistory = []
+		self.pricehistory = []
+		self.pointhistory = []
+		self.id = player["id"]
+		self.squadid = player["squad_id"]
+		self.first = player["first_name"]
+		self.last = player["last_name"]
+		self.cost = float(player["cost"])/1000000
+		self.position = player["positions"]
+		self.tp = player["stats"]["total_points"]
+		self.gp = player["stats"]["games_played"]
+		self.sr = player["stats"]["season_rank"]
+		self.ob = player["stats"]["owned_by"]
+		self.l3a = player["stats"]["last_3_avg"]
+		self.rr = player["stats"]["round_rank"]
+		self.ap = player["stats"]["avg_points"]
+		self.lmp = player["stats"]["last_match_points"]
+		self.sel = player["stats"]["selections"]
+		self.ls = player["stats"]["low_score"]
+		self.hs = player["stats"]["high_score"]
+		self.l5a = player["stats"]["last_5_avg"]
+		self.name = " ".join([self.first,self.last])
+
 	def findteam(self,teamlist):
 		for team in teamlist:
 			if(team.id==self.squadid):
@@ -23,7 +41,22 @@ class Player:
 			m = playerMatch(match["stats"],match["match_id"])
 			matches.append(m)
 		self.matchhistory = matches
-
+	def findpointhistory(self,person):
+		hist = []
+		for i in range(len(player["stats"]["scores"])):
+			try:
+				hist.append(player["stats"]["scores"][str(i+1)])
+			except KeyError:
+				hist.append(None)
+		self.pointhistory = hist
+	def findpricehistory(self,person):
+		hist = []
+		for i in range(len(player["stats"]["prices"])):
+			try:
+				hist.append(float(player["stats"]["prices"][str(i+1)])/1000000)
+			except KeyError:
+				hist.append(None)
+		self.pricehistory = hist
 class Team:
 	def __init__(self,id_,short,long_,name):
 		self.short = short
@@ -70,13 +103,15 @@ class playerMatch:
 players = requests.get(url='https://fgp-data-us.s3.amazonaws.com/json/mls_mls/players.json').json()
 teams = requests.get(url='https://fgp-data-us.s3.amazonaws.com/json/mls_mls/squads.json').json()
 rounds = requests.get(url='https://fgp-data-us.s3.amazonaws.com/json/mls_mls/rounds.json').json()
+
 #write json to txt file for manual parsing 
-with open('players.json', 'w') as outfile:  
+with open('jsonlcl/players.json', 'w') as outfile:  
     json.dump(players, outfile)
-with open('squads.json', 'w') as outfile:  
+with open('jsonlcl/squads.json', 'w') as outfile:  
     json.dump(teams, outfile)	
-with open('rounds.json', 'w') as outfile:  
+with open('jsonlcl/rounds.json', 'w') as outfile:  
     json.dump(rounds, outfile)
+
 #populate playerlist and teamlist
 playerlist = []
 teamlist = []
@@ -89,14 +124,9 @@ for team in teams:
 		)
 	teamlist.append(t)
 for player in players:
-	p = Player(
-		player["id"], #take in player id from json
-		player["squad_id"],#take in squad id from json
-		teamlist,
-		player["first_name"],#take in first name from json
-		player["last_name"],#take in last name from json
-		player["cost"]#take in cost from json
-		)
+	p = Player(player)
+	p.findpricehistory(player)
+	p.findpointhistory(player)
 	playerlist.append(p)
 #attribute players to teams
 for player in playerlist:
@@ -105,15 +135,26 @@ for team in teamlist:
 	team.findplayers(playerlist)
 #test player list of arbitrary team
 for player in playerlist:
-	try:
-		url = "https://fgp-data-us.s3.amazonaws.com/json/mls_mls/stats/players/"+str(player.id)+".json"
-		matchhistory = requests.get(url=url).json()
-		player.findmatchhistory(matchhistory)
-	except ValueError:
-		print("JSON Couldn't be found for: " + player.name)
+		try:
+			with open('jsonlcl/'+str(player.id)+'.json', 'r') as infile: 
+				matchhistory = json.load(infile)
+				player.findmatchhistory(matchhistory)
+		except:
+			pass
 
-
-
-
-
+x = []
+y = []
+for player in playerlist:
+	x.append(player.cost)
+	y.append(player.l5a)
+z = numpy.polyfit(x, y, 1)
+p = numpy.poly1d(z)
+pylab.plot(x,p(x),"r--")
+# the line equation:
+print "y=%.6fx+(%.6f)"%(z[0],z[1])
+plt.scatter(x,y)
+plt.title('cost vs. 5 week average')
+plt.ylabel('5 week average')
+plt.xlabel('cost')
+plt.show()
 
