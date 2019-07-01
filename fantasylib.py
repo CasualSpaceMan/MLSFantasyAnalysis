@@ -1,5 +1,9 @@
 import requests
 import json
+import numpy
+import pylab
+import matplotlib.pyplot as plt, mpld3
+
 
 class Player:
 	def __init__(self,player):
@@ -158,3 +162,50 @@ def setup():
 		except:
 			pass
 	return playerlist,teamlist
+def visualize(playerlist,p):
+	names = []
+	x = []
+	y = []
+	for player in playerlist:
+		if player.position == p:
+			names.append(player.name)
+			x.append(player.cost)
+			y.append(player.l5a)
+	z = numpy.polyfit(x, y, 1)
+	p = numpy.poly1d(z)
+	# the line equation:
+	print "y=%.6fx+(%.6f)"%(z[0],z[1])
+
+	fig,ax = plt.subplots()
+	sc = plt.scatter(x,y, s=100)
+
+	annot = ax.annotate("", xy=(0,0), xytext=(20,20),textcoords="offset points",
+	                    bbox=dict(boxstyle="round", fc="w"),
+	                    arrowprops=dict(arrowstyle="->"))
+	annot.set_visible(False)
+
+	def update_annot(ind):
+
+	    pos = sc.get_offsets()[ind["ind"][0]]
+	    annot.xy = pos
+	    text = " ".join([names[n] for n in ind["ind"]])
+	    annot.set_text(text)
+	    annot.get_bbox_patch().set_alpha(0.4)
+
+
+	def hover(event):
+	    vis = annot.get_visible()
+	    if event.inaxes == ax:
+	        cont, ind = sc.contains(event)
+	        if cont:
+	            update_annot(ind)
+	            annot.set_visible(True)
+	            fig.canvas.draw_idle()
+	        else:
+	            if vis:
+	                annot.set_visible(False)
+	                fig.canvas.draw_idle()
+
+	fig.canvas.mpl_connect("motion_notify_event", hover)
+	pylab.plot(x,p(x),"r--")
+	plt.show()
