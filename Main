@@ -10,7 +10,7 @@ y = []
 y1 = []
 names = []
 for player in playerlist:
-	if player.position == 3:
+	if player.position == 3,(pla)
 		x.append(player.cost)
 		y.append(player.ap*player.gp)
 		y1.append(player.l3a)
