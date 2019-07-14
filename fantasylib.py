@@ -42,17 +42,21 @@ class Player:
 			m = playerMatch(match["stats"],match["match_id"])
 			matches.append(m)
 		self.matchhistory = matches
-	def findpointhistory(self,person):
+	def findpointhistory(self,person,rounds):
 		hist = []
-		for i in range(len(person["stats"]["scores"])):
+		for i in range(gwnum(rounds)):
 			try:
 				hist.append(person["stats"]["scores"][str(i+1)])
 			except KeyError:
-				hist.append(None)
+				hist.append(0)
+			except TypeError:
+				hist.append(0)
+		# print len(hist)
+		# print hist
 		self.pointhistory = hist
-	def findpricehistory(self,person):
+	def findpricehistory(self,person,rounds):
 		hist = []
-		for i in range(len(person["stats"]["prices"])):
+		for i in range(gwnum(rounds)):
 			try:
 				hist.append(float(person["stats"]["prices"][str(i+1)])/1000000)
 			except KeyError:
@@ -99,7 +103,6 @@ class playerMatch:
 		self.pss = stats["PSS"]
 		self.oga = stats["OGA"]
 		self.matchid = matchid
-
 def populatelocaljson():
 	#load live json from mls website
 	players = requests.get(url='https://fgp-data-us.s3.amazonaws.com/json/mls_mls/players.json').json()
@@ -145,8 +148,8 @@ def setup():
 		teamlist.append(t)
 	for player in players:
 		p = Player(player)
-		p.findpricehistory(player)
-		p.findpointhistory(player)
+		p.findpricehistory(player,rounds)
+		p.findpointhistory(player,rounds)
 		playerlist.append(p)
 	#attribute players to teams
 	for player in playerlist:
@@ -162,6 +165,12 @@ def setup():
 		except:
 			pass
 	return playerlist,teamlist
+def gwnum(rounds):
+	i=0
+	for round in rounds:
+		if round['status']=='complete':
+			i=i+1
+	return i
 def visualize(playerlist,p):
 	names = []
 	x = []
@@ -205,7 +214,7 @@ def visualize(playerlist,p):
 	            if vis:
 	                annot.set_visible(False)
 	                fig.canvas.draw_idle()
-
+	                
 	fig.canvas.mpl_connect("motion_notify_event", hover)
 	pylab.plot(x,p(x),"r--")
 	plt.show()
