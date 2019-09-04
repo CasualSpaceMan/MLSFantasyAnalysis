@@ -4,6 +4,9 @@ import numpy
 import pylab
 import matplotlib.pyplot as plt, mpld3
 
+playerlist = []
+teamlist = []
+Gameweeks = []
 
 class Player:
 	def __init__(self,player):
@@ -51,8 +54,6 @@ class Player:
 				hist.append(0)
 			except TypeError:
 				hist.append(0)
-		# print len(hist)
-		# print hist
 		self.pointhistory = hist
 	def findpricehistory(self,person,rounds):
 		hist = []
@@ -62,6 +63,7 @@ class Player:
 			except KeyError:
 				hist.append(None)
 		self.pricehistory = hist
+
 class Team:
 	def __init__(self,id_,short,long_,name):
 		self.short = short
@@ -69,12 +71,14 @@ class Team:
 		self.name = name
 		self.id = id_
 		self.players = []
+		self.elo = 1000
 	def findplayers(self,playerlist):
 		roster=[]
 		for player in playerlist:
 			if player.squadid==self.id:
 				roster.append(player)
 		self.players=roster
+
 class playerMatch:
 	def __init__(self,stats,matchid):
 		self.mins = stats["MIN"]
@@ -103,8 +107,47 @@ class playerMatch:
 		self.pss = stats["PSS"]
 		self.oga = stats["OGA"]
 		self.matchid = matchid
-def populatelocaljson():
-	#load live json from mls website
+
+class teamMatch:
+	def __init__(self,game):
+		self.id = game['id']
+		self.hid = game['home_squad_id']
+		self.aid = game['away_squad_id']
+		self.round = game['real_round']
+		self.hoscr = game['home_score']
+		self.awscr = game['away_score']
+		self.home = self.gethome()
+		self.away = self.getaway()
+	def gethome(self):
+		for team in teamlist:
+			if team.id == self.hid:
+				return team
+	def getaway(self):
+		for team in teamlist:
+			if team.id == self.aid:
+				return team
+	def uelo(self):
+		x = self.home.elo - self.away.elo
+		Eh = 1/(1+10**(x/400))
+		Ea = 1/(1+10**(-x/400))
+		if self.hoscr > self.awscr:
+			Sh = 1;
+			Sa = 0;
+		if self.hoscr < self.awscr:
+			Sh = 0;
+			Sa = 1;
+		if self.hoscr == self.awscr:
+			Sh = 0.5;
+			Sa = 0.5;
+		self.home.elo = self.home.elo + 32*(Sh-Eh)
+		self.away.elo = self.away.elo + 32*(Sa-Ea)
+
+
+
+
+
+
+def populatelocaljson():	#load live json from mls website
 	players = requests.get(url='https://fgp-data-us.s3.amazonaws.com/json/mls_mls/players.json').json()
 	teams = requests.get(url='https://fgp-data-us.s3.amazonaws.com/json/mls_mls/squads.json').json()
 	rounds = requests.get(url='https://fgp-data-us.s3.amazonaws.com/json/mls_mls/rounds.json').json()
@@ -124,6 +167,7 @@ def populatelocaljson():
 			print("json updated for " + str(player["id"]))
 		except ValueError:
 			pass
+
 def getlocaljson():
 	with open('jsonlcl/players.json', 'r') as infile:  
 		players = json.load(infile)
@@ -132,12 +176,10 @@ def getlocaljson():
 	with open('jsonlcl/rounds.json', 'r') as infile:  
 		rounds = json.load(infile)
 	return players,teams,rounds
+
 def setup():
 	players,teams,rounds = getlocaljson()
-
 	#populate playerlist and teamlist
-	playerlist = []
-	teamlist = []
 	for team in teams:
 		t = Team(
 			team["id"], #take in player id from json
@@ -164,14 +206,24 @@ def setup():
 				player.findmatchhistory(matchhistory)
 		except:
 			pass
-	return playerlist,teamlist
+	for Round in rounds:
+		Gameweek = Round['matches']
+		gw = []
+		for game in Gameweek:
+			g = teamMatch(game)
+			g.uelo()
+			gw.append(g)
+		Gameweeks.append(gw)
+	return playerlist,teamlist,Gameweeks
+
 def gwnum(rounds):
 	i=0
 	for round in rounds:
 		if round['status']=='complete':
 			i=i+1
 	return i
-def visualize(playerlist,p):
+
+def visualize(p):
 	names = []
 	x = []
 	y = []
@@ -217,4 +269,4 @@ def visualize(playerlist,p):
 	                
 	fig.canvas.mpl_connect("motion_notify_event", hover)
 	pylab.plot(x,p(x),"r--")
-	plt.show()
+	plot.show()

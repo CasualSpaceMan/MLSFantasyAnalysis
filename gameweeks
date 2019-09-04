@@ -1,0 +1,9 @@
+from fantasylib import *
+import statistics as stat
+import matplotlib.pyplot as plt, mpld3
+
+players,teams,rounds = getlocaljson()
+playerlist,teamlist,Gameweeks = setup()
+
+for team in teamlist:
+	print team.long + ": " +str(team.elo)

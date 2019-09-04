@@ -2,77 +2,13 @@ from fantasylib import *
 import statistics as stat
 import matplotlib.pyplot as plt, mpld3
 
+#populatelocaljson()
 #pull playerlist from json
 players,teams,rounds = getlocaljson()
-playerlist,teamlist = setup()
+playerlist,teamlist, Gameweeks = setup()
 
-fpointavg = []
-mpointavg = []
-dpointavg = []
-gpointavg = []
-
-for i in range(gwnum(rounds)):
-    fgw = []
-    mgw = []
-    dgw = []
-    ggw = []
-    for player in playerlist:
-        if player.position == 1:
-            if player.pricehistory[i] != None:
-                ggw.append(player.pricehistory[i])         
-        if player.position == 2:
-            if player.pricehistory[i] != None:
-                dgw.append(player.pricehistory[i])
-        if player.position == 3:
-            if player.pricehistory[i] != None:
-                mgw.append(player.pricehistory[i])
-        if player.position == 4:
-            if player.pricehistory[i] != None:
-                fgw.append(player.pricehistory[i])
-    fpointavg.append(stat.mean(fgw))
-    mpointavg.append(stat.mean(mgw))
-    dpointavg.append(stat.mean(dgw))
-    gpointavg.append(stat.mean(ggw))
-
-print gpointavg[8]
-
-zf = numpy.polyfit(range(gwnum(rounds)), fpointavg, 1)
-pf = numpy.poly1d(zf)
-zm = numpy.polyfit(range(gwnum(rounds)), mpointavg, 1)
-pm = numpy.poly1d(zm)
-zd = numpy.polyfit(range(gwnum(rounds)), dpointavg, 1)
-pd = numpy.poly1d(zd)
-zg = numpy.polyfit(range(gwnum(rounds)), gpointavg, 1)
-pg = numpy.poly1d(zg)
-# the line equation:
-print "y=%.6fx+(%.6f)"%(zf[0],zf[1])
-print "y=%.6fx+(%.6f)"%(zm[0],zm[1])
-print "y=%.6fx+(%.6f)"%(zd[0],zd[1])
-print "y=%.6fx+(%.6f)"%(zg[0],zg[1])
-
-pylab.plot(range(gwnum(rounds)),pf(range(gwnum(rounds))),"r--")
-pylab.plot(range(gwnum(rounds)),pm(range(gwnum(rounds))),"g--")
-pylab.plot(range(gwnum(rounds)),pd(range(gwnum(rounds))),"b--")
-pylab.plot(range(gwnum(rounds)),pg(range(gwnum(rounds))),"y--")
-
-plt.scatter(range(gwnum(rounds)),fpointavg,c='r',)
-plt.scatter(range(gwnum(rounds)),mpointavg,c='g')
-plt.scatter(range(gwnum(rounds)),dpointavg,c='b')
-plt.scatter(range(gwnum(rounds)),gpointavg,c='y')
-
-plt.show()
-
-
-
-
-
-
-
-
-
-
-
-
-
-		
-
+population = []
+for player in playerlist:
+    if len(player.matchhistory) == 20:
+        population.append(player)
+print len(population)
