@@ -11,7 +11,7 @@ teamlist = []
 Gameweeks = []
 
 # picks round to stop data intake, set to gwnum(rounds) to get most up to date gameweek
-choice = 1
+choice = 4
 
 
 class Player:
@@ -73,7 +73,6 @@ class Player:
 			self.cost = float(hist[-1])
 		except TypeError:
 			self.cost = None
-			print(self.id)
 
 class Team:
 	def __init__(self,id_,short,long_,name,elo):

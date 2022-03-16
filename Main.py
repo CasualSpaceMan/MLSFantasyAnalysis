@@ -10,7 +10,7 @@ players,teams,rounds = getlocaljson()
 playerlist,teamlist, Gameweeks = setup()
 
 # Rank Top PLayers based on adjusted score
-CG = Gameweeks[1]
+CG = Gameweeks[3]
 iD = [] #list of player id numbers
 price = [] #list of price associated with each player (should line up with id)
 team = [] #list of team id associated with each player
@@ -50,8 +50,8 @@ positions = [1,2,3,4]
 for i,a in enumerate(positions):
 	pc[i] = list(map(int,list(np.array(pos)==a)))
 constraint_matrix = tc + pc + [price]
-cub = [3]*28 + [1,4,4,2]+[85.8]
-clb = [0]*28 + [1,4,4,2]+[0]
+cub = [3]*28 + [2,5,5,3]+[103.1]
+clb = [0]*28 + [2,5,5,3]+[0]
 
 def create_data_model():
 	data = {}
@@ -94,10 +94,11 @@ for num in squad_ids:
 			squad.append(player)
 cost = 0
 print('-------------')
-for player in squad:
-	for val in positions:
-		if player.position == val:
-			print(player.name + ','+str(player.position)+','+player.team.long+','+str(player.cost)+','+ str(player.pricehistory))
-			cost = cost+player.cost
+for val in positions:
+	for player in squad:
+			if player.position == val:
+				print(player.name + ','+str(player.position)+','+player.team.long+','+str(player.cost))
+				cost = cost+player.cost
 
-
+	print('-------------')
+print(cost)
