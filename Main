@@ -7,8 +7,3 @@ import matplotlib.pyplot as plt, mpld3
 players,teams,rounds = getlocaljson()
 playerlist,teamlist, Gameweeks = setup()
 
-population = []
-for player in playerlist:
-    if len(player.matchhistory) == 20:
-        population.append(player)
-print len(population)

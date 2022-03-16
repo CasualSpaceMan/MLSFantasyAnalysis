@@ -3,10 +3,16 @@ import json
 import numpy
 import pylab
 import matplotlib.pyplot as plt, mpld3
+from datetime import date
+from datetime import datetime
 
 playerlist = []
 teamlist = []
 Gameweeks = []
+
+# picks round to stop data intake, set to gwnum(rounds) to get most up to date gameweek
+choice = 1
+
 
 class Player:
 	def __init__(self,player):
@@ -18,7 +24,7 @@ class Player:
 		self.squadid = player["squad_id"]
 		self.first = player["first_name"]
 		self.last = player["last_name"]
-		self.cost = float(player["cost"])/1000000
+		self.cost = None
 		self.position = player["positions"][0]
 		self.gp = player["stats"]["games_played"]
 		self.tp = player["stats"]["total_points"]
@@ -47,31 +53,36 @@ class Player:
 		self.matchhistory = matches
 	def findpointhistory(self,person,rounds):
 		hist = []
-		for i in range(gwnum(rounds)):
+		for i in range(choice):
 			try:
 				hist.append(person["stats"]["scores"][str(i+1)])
 			except KeyError:
-				hist.append(0)
+				hist.append(None)
 			except TypeError:
-				hist.append(0)
+				hist.append(None)
 		self.pointhistory = hist
 	def findpricehistory(self,person,rounds):
 		hist = []
-		for i in range(gwnum(rounds)):
+		for i in range(choice):
 			try:
 				hist.append(float(person["stats"]["prices"][str(i+1)])/1000000)
 			except KeyError:
 				hist.append(None)
 		self.pricehistory = hist
+		try:
+			self.cost = float(hist[-1])
+		except TypeError:
+			self.cost = None
+			print(self.id)
 
 class Team:
-	def __init__(self,id_,short,long_,name):
+	def __init__(self,id_,short,long_,name,elo):
 		self.short = short
 		self.long = long_
 		self.name = name
 		self.id = id_
 		self.players = []
-		self.elo = 1000
+		self.elo = elo
 	def findplayers(self,playerlist):
 		roster=[]
 		for player in playerlist:
@@ -139,23 +150,16 @@ class teamMatch:
 		if self.hoscr == self.awscr:
 			Sh = 0.5;
 			Sa = 0.5;
-		self.home.elo = self.home.elo + 32*(Sh-Eh)
-		self.away.elo = self.away.elo + 32*(Sa-Ea)
-
-
-
-
-
+		self.home.elo = int(self.home.elo + 32*(Sh-Eh))
+		self.away.elo = int(self.away.elo + 32*(Sa-Ea))
 
 def populatelocaljson():	#load live json from mls website
-	players = requests.get(url='https://fgp-data-us.s3.amazonaws.com/json/mls_mls/players.json').json()
-	teams = requests.get(url='https://fgp-data-us.s3.amazonaws.com/json/mls_mls/squads.json').json()
-	rounds = requests.get(url='https://fgp-data-us.s3.amazonaws.com/json/mls_mls/rounds.json').json()
+	players = requests.get(url='https://fgp-data-us.s3.us-east-1.amazonaws.com/json/mls_mls/players.json?_=1646966560478').json()
+	teams = requests.get(url='https://fgp-data-us.s3.us-east-1.amazonaws.com/json/mls_mls/squads.json?_=1646966560478').json()
+	rounds = requests.get(url='https://fgp-data-us.s3.us-east-1.amazonaws.com/json/mls_mls/rounds.json?_=1646966560474').json()
 	#write json to txt file for manual parsing 
 	with open('jsonlcl/players.json', 'w') as outfile:  
 		json.dump(players, outfile)
-	with open('jsonlcl/squads.json', 'w') as outfile:  
-		json.dump(teams, outfile)	
 	with open('jsonlcl/rounds.json', 'w') as outfile:  
 		json.dump(rounds, outfile)
 	for player in players:
@@ -186,6 +190,7 @@ def setup():
 			team["short_name"],#take in squad id from json
 			team["full_name"],#take in first name from json
 			team["name"],#take in last name from json
+			team["start_elo"]
 		)
 		teamlist.append(t)
 	for player in players:
@@ -211,7 +216,9 @@ def setup():
 		gw = []
 		for game in Gameweek:
 			g = teamMatch(game)
-			g.uelo()
+			sd = Round['start']
+			if Round['id'] <= 3:
+				g.uelo()
 			gw.append(g)
 		Gameweeks.append(gw)
 	return playerlist,teamlist,Gameweeks
@@ -235,7 +242,6 @@ def visualize(p):
 	z = numpy.polyfit(x, y, 1)
 	p = numpy.poly1d(z)
 	# the line equation:
-	print "y=%.6fx+(%.6f)"%(z[0],z[1])
 
 	fig,ax = plt.subplots()
 	sc = plt.scatter(x,y, s=100)
