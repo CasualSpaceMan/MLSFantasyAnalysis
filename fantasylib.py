@@ -2,17 +2,20 @@ import requests
 import json
 import numpy
 import pylab
-import matplotlib.pyplot as plt, mpld3
+import time
+import tqdm
+from time import sleep
 from datetime import date
 from datetime import datetime
+import numpy as np
+from ortools.linear_solver import pywraplp
+
 
 playerlist = []
 teamlist = []
 Gameweeks = []
 
 # picks round to stop data intake, set to gwnum(rounds) to get most up to date gameweek
-choice = 4
-
 
 class Player:
 	def __init__(self,player):
@@ -28,17 +31,16 @@ class Player:
 		self.position = player["positions"][0]
 		self.gp = player["stats"]["games_played"]
 		self.tp = player["stats"]["total_points"]
-		self.gp = player["stats"]["games_played"]
 		self.sr = player["stats"]["season_rank"]
 		self.ob = player["stats"]["owned_by"]
 		self.l3a = player["stats"]["last_3_avg"]
 		self.rr = player["stats"]["round_rank"]
-		self.ap = player["stats"]["avg_points"]
 		self.lmp = player["stats"]["last_match_points"]
 		self.sel = player["stats"]["selections"]
 		self.ls = player["stats"]["low_score"]
 		self.hs = player["stats"]["high_score"]
 		self.l5a = player["stats"]["last_5_avg"]
+		self.proj = list(player["stats"]["projected_scores"].values())[0]
 		self.name = " ".join([self.first,self.last])
 
 	def findteam(self,teamlist):
@@ -53,17 +55,19 @@ class Player:
 		self.matchhistory = matches
 	def findpointhistory(self,person,rounds):
 		hist = []
-		for i in range(choice):
+		for i in range(gwnum(rounds)+1):
 			try:
 				hist.append(person["stats"]["scores"][str(i+1)])
 			except KeyError:
-				hist.append(None)
+				hist.append(0)
 			except TypeError:
-				hist.append(None)
+				hist.append(0)
+		self.l3a = sum(hist[(len(hist)-4):(len(hist)-1)])/3
 		self.pointhistory = hist
+		self.ap = sum(hist)/len(hist)
 	def findpricehistory(self,person,rounds):
 		hist = []
-		for i in range(choice):
+		for i in range(gwnum(rounds)+1):
 			try:
 				hist.append(float(person["stats"]["prices"][str(i+1)])/1000000)
 			except KeyError:
@@ -140,6 +144,12 @@ class teamMatch:
 		x = self.home.elo - self.away.elo
 		Eh = 1/(1+10**(x/400))
 		Ea = 1/(1+10**(-x/400))
+		if (self.hoscr==self.awscr or abs(self.hoscr-self.awscr)==1):
+			G = 1
+		if abs(self.hoscr-self.awscr) == 2:
+			G =3/2
+		if abs(self.hoscr-self.awscr)>=3:
+			G = (11+(abs(self.hoscr-self.awscr)))/8
 		if self.hoscr > self.awscr:
 			Sh = 1;
 			Sa = 0;
@@ -149,9 +159,12 @@ class teamMatch:
 		if self.hoscr == self.awscr:
 			Sh = 0.5;
 			Sa = 0.5;
-		self.home.elo = int(self.home.elo + 32*(Sh-Eh))
-		self.away.elo = int(self.away.elo + 32*(Sa-Ea))
-
+		self.home.elo = int(self.home.elo + 32*G*(Sh-Eh))
+		self.away.elo = int(self.away.elo + 32*G*(Sa-Ea))
+		dr = self.home.elo-self.away.elo
+		self.hwe = (1/(10**(-dr/400)+1))
+		dr = self.away.elo-self.home.elo
+		self.awe = (1/(10**(-dr/400)+1))
 def populatelocaljson():	#load live json from mls website
 	players = requests.get(url='https://fgp-data-us.s3.us-east-1.amazonaws.com/json/mls_mls/players.json?_=1646966560478').json()
 	teams = requests.get(url='https://fgp-data-us.s3.us-east-1.amazonaws.com/json/mls_mls/squads.json?_=1646966560478').json()
@@ -161,16 +174,18 @@ def populatelocaljson():	#load live json from mls website
 		json.dump(players, outfile)
 	with open('jsonlcl/rounds.json', 'w') as outfile:  
 		json.dump(rounds, outfile)
-	for player in players:
+
+	for i in tqdm.tqdm(range(len(players))):
 		try:
+			player = players[i]
 			url = "https://fgp-data-us.s3.amazonaws.com/json/mls_mls/stats/players/"+str(player["id"])+".json"
 			matchhistory= requests.get(url=url).json()
 			with open('jsonlcl/'+str(player["id"])+'.json', 'w') as outfile:  
 				json.dump(matchhistory, outfile)
-			print("json updated for " + str(player["id"]))
+			print('\n'*100)
 		except ValueError:
+			print('\n'*100)
 			pass
-
 def getlocaljson():
 	with open('jsonlcl/players.json', 'r') as infile:  
 		players = json.load(infile)
@@ -179,7 +194,6 @@ def getlocaljson():
 	with open('jsonlcl/rounds.json', 'r') as infile:  
 		rounds = json.load(infile)
 	return players,teams,rounds
-
 def setup():
 	players,teams,rounds = getlocaljson()
 	#populate playerlist and teamlist
@@ -216,62 +230,117 @@ def setup():
 		for game in Gameweek:
 			g = teamMatch(game)
 			sd = Round['start']
-			if Round['id'] <= 3:
+			if Round['id'] <= gwnum(rounds):
 				g.uelo()
 			gw.append(g)
 		Gameweeks.append(gw)
 	return playerlist,teamlist,Gameweeks
+def teamselect(CG,players,RMS):
+	iD = [] #list of player id numbers
+	price = [] #list of price associated with each player (should line up with id)
+	team = [] #list of team id associated with each player
+	pos = [] #list of position associated with each player
+	eS = [] #list of expected scores
 
+	# populate lists that will be used for MILP process
+	for game in CG:
+		for player in game.home.players:
+			if player.cost is not None:
+#check if player is already in the list (double gameweek condition)
+				if player.id in iD:	
+					dr = game.home.elo-game.away.elo
+					AS = player.ap*(1/(10**(-dr/400)+1))
+					eS[iD.index(player.id)] = eS[iD.index(player.id)] + AS
+#if they aren't then add a new element to the array
+				else:
+					dr = game.home.elo-game.away.elo
+					AS = player.ap*(1/(10**(-dr/400)+1))
+					iD.append(player.id)
+					price.append(player.cost)
+					team.append(player.squadid)
+					pos.append(player.position)
+					eS.append(AS)
+
+		for player in game.away.players:
+			if player.cost is not None:
+				if player.id in iD:	
+					dr = game.away.elo-game.home.elo
+					AS = player.ap*(1/(10**(-dr/400)+1))
+					eS[iD.index(player.id)] = eS[iD.index(player.id)] + AS
+				else:
+					dr = game.away.elo-game.home.elo
+					AS = player.ap*(1/(10**(-dr/400)+1))
+					iD.append(player.id)
+					price.append(player.cost)
+					team.append(player.squadid)
+					pos.append(player.position)
+					eS.append(AS)
+	#define team constraints for each team
+	tc = [[0]*len(iD)]*28
+	for i,t in enumerate(teamlist):
+		tc[i]= list(map(int,list(np.array(team)==t.id)))
+
+	pc = [[0]*len(iD)]*4
+	positions = [1,2,3,4]
+
+	for i,a in enumerate(positions):
+		pc[i] = list(map(int,list(np.array(pos)==a)))
+	constraint_matrix = tc + pc + [price]
+	cub = [3]*28 + [2,5,5,3]+[RMS]
+	clb = [0]*28 + [2,5,5,3]+[0]
+
+	def create_data_model():
+		data = {}
+		data['constraint_coeffs'] = constraint_matrix
+		data['bounds'] = cub
+		data['obj_coeffs'] = eS #coefficients of objective function are adjusted scores for upcoming match
+		data['num_vars'] = len(iD) #number of variables is equal to the total number of players 
+		data['num_constraints'] = 33 #team constraints: 28 , position constraints: 4, cost constraints: 1 = 33
+		return data
+	data = create_data_model()
+	solver = pywraplp.Solver.CreateSolver('SCIP')
+	x = {}
+	for j in range(data['num_vars']):
+		x[j] = solver.IntVar(0,1,'x[%i]' % j)
+	for i in range(data['num_constraints']):
+		constraint = solver.RowConstraint(clb[i], data['bounds'][i], '')
+		for j in range(data['num_vars']):
+			constraint.SetCoefficient(x[j], data['constraint_coeffs'][i][j])
+	objective = solver.Objective()
+	for j in range(data['num_vars']):
+		objective.SetCoefficient(x[j], data['obj_coeffs'][j])
+	objective.SetMaximization()
+
+	status = solver.Solve()
+	if status == pywraplp.Solver.OPTIMAL:
+	    print('Objective value =', solver.Objective().Value())
+	    print('Problem solved in %f milliseconds' % solver.wall_time())
+	    print('Problem solved in %d iterations' % solver.iterations())
+	    print('Problem solved in %d branch-and-bound nodes' % solver.nodes())
+	else:
+	    print('The problem does not have an optimal solution.')
+	squad_ids = []
+	for j in range(data['num_vars']):
+		if (x[j].solution_value()==1):
+			squad_ids.append(iD[j])
+	squad = []
+	for num in squad_ids:
+		for player in playerlist:
+			if num==player.id:
+				squad.append(player)
+	cost = 0
+	print('-------------')
+	for val in positions:
+		for player in squad:
+				if player.position == val:
+					print(player.name + ','+str(player.position)+','+player.team.long+','+str(player.cost))
+					cost = cost+player.cost
+
+		print('-------------')
+	print(cost)
 def gwnum(rounds):
 	i=0
 	for round in rounds:
 		if round['status']=='complete':
 			i=i+1
 	return i
-
-def visualize(p):
-	names = []
-	x = []
-	y = []
-	for player in playerlist:
-		if player.position == p:
-			names.append(player.name)
-			x.append(player.cost)
-			y.append(player.l5a)
-	z = numpy.polyfit(x, y, 1)
-	p = numpy.poly1d(z)
-	# the line equation:
-
-	fig,ax = plt.subplots()
-	sc = plt.scatter(x,y, s=100)
-
-	annot = ax.annotate("", xy=(0,0), xytext=(20,20),textcoords="offset points",
-	                    bbox=dict(boxstyle="round", fc="w"),
-	                    arrowprops=dict(arrowstyle="->"))
-	annot.set_visible(False)
-
-	def update_annot(ind):
-
-	    pos = sc.get_offsets()[ind["ind"][0]]
-	    annot.xy = pos
-	    text = " ".join([names[n] for n in ind["ind"]])
-	    annot.set_text(text)
-	    annot.get_bbox_patch().set_alpha(0.4)
-
-
-	def hover(event):
-	    vis = annot.get_visible()
-	    if event.inaxes == ax:
-	        cont, ind = sc.contains(event)
-	        if cont:
-	            update_annot(ind)
-	            annot.set_visible(True)
-	            fig.canvas.draw_idle()
-	        else:
-	            if vis:
-	                annot.set_visible(False)
-	                fig.canvas.draw_idle()
-	                
-	fig.canvas.mpl_connect("motion_notify_event", hover)
-	pylab.plot(x,p(x),"r--")
-	plot.show()
